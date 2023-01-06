@@ -1,4 +1,4 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using TShockAPI;
 
 namespace InvSee.Extensions
@@ -7,9 +7,11 @@ namespace InvSee.Extensions
 	{
 		public static PlayerInfo GetPlayerInfo(this TSPlayer player)
 		{
-			if (!player.ContainsData(PlayerInfo.KEY))
-				player.SetData(PlayerInfo.KEY, new PlayerInfo());
-			return player.GetData<PlayerInfo>(PlayerInfo.KEY);
+			if (!player.ContainsData("InvSee_Data"))
+			{
+				player.SetData("InvSee_Data", new PlayerInfo());
+			}
+			return player.GetData<PlayerInfo>("InvSee_Data");
 		}
 
 		public static void PluginMessage(this TSPlayer player, string message, Color color)

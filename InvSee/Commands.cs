@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using InvSee.Extensions;
@@ -10,173 +11,169 @@ namespace InvSee
 {
 	internal class Commands
 	{
-		private static readonly string _cp = TShockAPI.Commands.Specifier;
+		public static readonly string _cp = TShockAPI.Commands.Specifier;
 
 		public static void DoInvSee(CommandArgs args)
 		{
 			if (!Main.ServerSideCharacter)
 			{
-				args.Player.PluginErrorMessage("ServerSideCharacters must be enabled.");
+				args.Player.PluginErrorMessage("服务器云存档(SSC)必须打开.");
 				return;
 			}
-
-			PlayerInfo info = args.Player.GetPlayerInfo();
-
+			if (!args.Player.RealPlayer)
+			{
+				args.Player.SendErrorMessage("[InvSee]:你必须在游戏中使用.");
+				return;
+			}
+			PlayerInfo playerInfo = args.Player.GetPlayerInfo();
 			if (args.Parameters.Count < 1)
 			{
 				if (args.Player.Dead)
 				{
-					args.Player.PluginErrorMessage("You cannot restore your inventory while dead.");
+					args.Player.PluginErrorMessage("不能在死亡后恢复你的背包.");
 					return;
 				}
-				bool restored = info.Restore(args.Player);
-				if (restored)
-					args.Player.PluginErrorMessage("Inventory has been restored.");
-				else
+				if (playerInfo.Restore(args.Player))
 				{
-					args.Player.PluginInfoMessage("You are currently not seeing anyone's inventory.");
-					args.Player.PluginInfoMessage($"Use '{_cp}invsee <player name>' to begin.");
+					args.Player.PluginErrorMessage("背包已恢复.");
+					return;
 				}
+				args.Player.PluginInfoMessage("你目前没有查看任何人的背包.");
+				args.Player.SendInfoMessage($"输入[c/FF000:{_cp}查背包 帮助]查看更多信息.");
+				return;
 			}
-			else
+			if (args.Parameters.Count == 0 || args.Parameters[0].ToLower() == "help")
 			{
-				Regex regex = new Regex(@"^\w+ (?:-(?<Saving>s(?:ave)?)|""?(?<Name>.+?)""?)$");
-				Match match = regex.Match(args.Message);
-				if (!String.IsNullOrWhiteSpace(match.Groups["Saving"].Value))
+				args.Player.PluginErrorMessage("查背包插件,查询与修改用户背包.");
+				args.Player.SendInfoMessage($"{_cp}查背包 <用户名> - 查看复制一个用户背包");
+				if (args.Player.HasPermission(Permissions.InvSeeSave))
 				{
-					if (!args.Player.Group.HasPermission(Permissions.InvSeeSave))
-					{
-						args.Player.PluginErrorMessage("You don't have the permission to change player inventories!");
-						return;
-					}
-
-					if (info.Backup == null || String.IsNullOrWhiteSpace(info.CopyingUserName))
-						args.Player.PluginErrorMessage("You are not copying any user!");
-					else
-					{
-						User user = TShock.Users.GetUserByName(info.CopyingUserName);
-						TSPlayer player;
-						if (user == null)
-						{
-							args.Player.PluginErrorMessage("Invalid user!");
-							return;
-						}
-						else if ((player = TShock.Utils.FindPlayer(info.CopyingUserName).FirstOrDefault()) != null)
-						{
-							// Fixes Invsee Saving on Active Players
-							args.Player.PlayerData.CopyCharacter(args.Player);
-							args.Player.PlayerData.RestoreCharacter(player);
-							TShock.Log.ConsoleInfo("[Online] {0} has modified {1}'s ({2}) inventory.",
-								args.Player.Name, info.CopyingUserName, info.UserID);
-						}
-						else
-						{
-							try
-							{
-								// Only replace inventory, ignore character looks.
-								// We copy our character to make sure inventory is up to date before sending it.
-								args.Player.PlayerData.CopyCharacter(args.Player);
-								PlayerData playerData = args.Player.PlayerData;
-
-								string query = @"UPDATE tsCharacter
-												 SET Health = @0, MaxHealth = @1, Mana = @2, MaxMana = @3,
-													 Inventory = @4
-												 WHERE Account = @5;";
-								TShock.CharacterDB.database.Query(query, playerData.health, playerData.maxHealth,
-									playerData.mana, playerData.maxMana, String.Join("~", playerData.inventory),
-									info.UserID);
-								TShock.Log.ConsoleInfo("[Offline] {0} has modified {1}'s ({2}) inventory.",
-									args.Player.Name, info.CopyingUserName, info.UserID);
-							}
-							catch (Exception ex)
-							{
-								args.Player.PluginErrorMessage("Unable to save the player's inventory.");
-								TShock.Log.Error(ex.ToString());
-								return;
-							}
-						}
-						args.Player.PluginInfoMessage($"Saved changes made to {user.Name}'s inventory.");
-					}
+					args.Player.SendInfoMessage($"输入[c/FF0000:{_cp}查背包]命令后,对目标用户的背包进行修改");
+					args.Player.SendInfoMessage($"再输入[c/FF0000:{_cp}查背包 保存]可以将修改后的背包保存,并应用到目标用户");
+				}
+				return;
+			}
+			Regex regex = new Regex("^\\w+ (?:(?<Saving>保存(?:ave)?)|\"?(?<Name>.+?)\"?)$");
+			Match match = regex.Match(args.Message);
+			if (!string.IsNullOrWhiteSpace(match.Groups["Saving"].Value))
+			{
+				if (!args.Player.Group.HasPermission(Permissions.InvSeeSave))
+				{
+					args.Player.PluginErrorMessage("你没有权限来更改用户的背包!");
+					return;
+				}
+				if (playerInfo.Backup == null || string.IsNullOrWhiteSpace(playerInfo.CopyingUserName))
+				{
+					args.Player.PluginErrorMessage("你必须打开一个用户背包后再使用该命令!");
+					return;
+				}
+				UserAccount userAccountByName = TShock.UserAccounts.GetUserAccountByName(playerInfo.CopyingUserName);
+				if (userAccountByName == null)
+				{
+					args.Player.PluginErrorMessage("错误的用户名!");
+					return;
+				}
+				TSPlayer ?player;
+				if ((player = TSPlayer.FindByNameOrID(playerInfo.CopyingUserName).FirstOrDefault()) != null)
+				{
+					args.Player.PlayerData.CopyCharacter(args.Player);
+					args.Player.PlayerData.RestoreCharacter(player);
+					TShock.Log.ConsoleInfo("[InvSee]:{0} 已修改 {1}[在线](用户ID{2})的背包.", args.Player.Name, playerInfo.CopyingUserName, playerInfo.UserID);
 				}
 				else
 				{
-					string playerName = match.Groups["Name"].Value;
-
-					PlayerData data;
-					string name = "";
-					int userid = 0;
-					var players = TShock.Utils.FindPlayer(playerName);
-					if (players.Count == 0)
-					{
-						if (!args.Player.Group.HasPermission(Permissions.InvSeeUser))
-						{
-							args.Player.PluginErrorMessage("You can't copy users!");
-							return;
-						}
-
-						User user = TShock.Users.GetUserByName(playerName);
-						if (user == null)
-						{
-							args.Player.PluginErrorMessage($"Invalid player or account '{playerName}'!");
-							return;
-						}
-						else
-						{
-							data = TShock.CharacterDB.GetPlayerData(args.Player, user.ID);
-							name = user.Name;
-							userid = user.ID;
-						}
-					}
-					else if (players.Count > 1)
-					{
-						TShock.Utils.SendMultipleMatchError(args.Player, players.Select(p => p.Name));
-						return;
-					}
-					else
-					{
-						if(players[0].User == null)
-						{
-							args.Player.PluginErrorMessage($"Invalid player or account '{playerName}'!");
-							return;
-						}
-						userid = players[0].User.ID;
-						players[0].PlayerData.CopyCharacter(players[0]);
-						data = players[0].PlayerData;
-						name = players[0].User?.Name ?? "";
-					}
 					try
 					{
-						if (data == null)
-						{
-							args.Player.PluginErrorMessage($"{name}'s data not found!");
-							return;
-						}
-
-						// Setting up backup data
-						if (info.Backup == null)
-						{
-							info.Backup = new PlayerData(args.Player);
-							info.Backup.CopyCharacter(args.Player);
-						}
-
-						info.CopyingUserName = name;
-						info.UserID = userid;
-						data.RestoreCharacter(args.Player);
-						args.Player.PluginSuccessMessage($"Copied {name}'s inventory.");
+						args.Player.PlayerData.CopyCharacter(args.Player);
+						PlayerData playerData = args.Player.PlayerData;
+						string query = "UPDATE tsCharacter SET Health = @0, MaxHealth = @1, Mana = @2, MaxMana = @3, Inventory = @4 WHERE Account = @5;";
+						TShock.CharacterDB.database.Query(query, playerData.health, playerData.maxHealth, playerData.mana, playerData.maxMana, string.Join("~", playerData.inventory), playerInfo.UserID);
+						TShock.Log.ConsoleInfo("[InvSee]:{0} 已修改 {1}[离线](用户ID{2})的背包.", args.Player.Name, playerInfo.CopyingUserName, playerInfo.UserID);
 					}
 					catch (Exception ex)
 					{
-						// In case it fails, everything is restored
-						if (info.Backup != null)
-						{
-							info.CopyingUserName = "";
-							info.Backup.RestoreCharacter(args.Player);
-							info.Backup = null;
-						}
-						TShock.Log.ConsoleError(ex.ToString());
-						args.Player.PluginErrorMessage("Something went wrong... restored your inventory.");
+						args.Player.PluginErrorMessage("修改用户背包时出现错误.");
+						TShock.Log.Error(ex.ToString());
+						return;
 					}
 				}
+				args.Player.PluginInfoMessage("已保存修改 " + userAccountByName.Name + " 的背包.");
+				return;
+			}
+			string value = match.Groups["Name"].Value;
+			List<TSPlayer> list = TSPlayer.FindByNameOrID(value);
+			PlayerData playerData2;
+			string text;
+			int iD;
+			if (list.Count == 0)
+			{
+				if (!args.Player.Group.HasPermission(Permissions.InvSeeUser))
+				{
+					args.Player.PluginErrorMessage("你没有权限使用该命令!");
+					return;
+				}
+				UserAccount userAccountByName2 = TShock.UserAccounts.GetUserAccountByName(value);
+				if (userAccountByName2 == null)
+				{
+					args.Player.PluginErrorMessage("错误的用户名\"" + value + "\"!");
+					return;
+				}
+				playerData2 = TShock.CharacterDB.GetPlayerData(args.Player, userAccountByName2.ID);
+				text = userAccountByName2.Name;
+				iD = userAccountByName2.ID;
+			}
+			else
+			{
+				if (list.Count > 1)
+				{
+					args.Player.SendMultipleMatchError(list.Select((TSPlayer p) => p.Name));
+					return;
+				}
+				if (list[0].Account == null)
+				{
+					args.Player.PluginErrorMessage("错误的用户名\"" + value + "\"!");
+					return;
+				}
+				iD = list[0].Account.ID;
+				list[0].PlayerData.CopyCharacter(list[0]);
+				playerData2 = list[0].PlayerData;
+				UserAccount account = list[0].Account;
+				text = ((account != null) ? account.Name : null) ?? "";
+			}
+			try
+			{
+				if (playerData2 == null)
+				{
+					args.Player.PluginErrorMessage(text + "的数据没有找到!");
+					return;
+				}
+				if (playerInfo.Backup == null)
+				{
+					playerInfo.Backup = new PlayerData(args.Player);
+					playerInfo.Backup.CopyCharacter(args.Player);
+				}
+				playerInfo.CopyingUserName = text;
+				playerInfo.UserID = iD;
+				playerData2.RestoreCharacter(args.Player);
+				args.Player.PluginSuccessMessage("已打开 " + text + " 的背包.");
+				if (args.Player.HasPermission(Permissions.InvSeeSave))
+				{
+					args.Player.SendInfoMessage($"在此期间你可以更改他的背包内容,并输入[c/FF0000:{_cp}查背包 保存]将其保存");
+                    args.Player.SendInfoMessage($"输入\"{Commands._cp}查背包\"来恢复你之前的背包.");
+
+
+				}
+			}
+			catch (Exception ex2)
+			{
+				if (playerInfo.Backup != null)
+				{
+					playerInfo.CopyingUserName = "";
+					playerInfo.Backup.RestoreCharacter(args.Player);
+					playerInfo.Backup = null;
+				}
+				TShock.Log.ConsoleError(ex2.ToString());
+				args.Player.PluginErrorMessage("出现了一些错误,已恢复你的背包.");
 			}
 		}
 	}

@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Reflection;
 using InvSee.Extensions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -11,20 +12,20 @@ namespace InvSee
 	[ApiVersion(2, 1)]
 	public class PMain : TerrariaPlugin
 	{
-		public override string Author => "Enerdy";
+		public override string Author => "Enerdy制作,nnt汉化,Cai升级";
 
-		public override string Description => "Utilizes SSC technology to temporarily copy a player's inventory.";
+		public override string Description => "临时复制用户背包,并对其进行修改.";
 
-		public override string Name => "InvSee";
+		public override string Name => "InvSee汉化版";
 
-		public override Version Version => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+		public override Version Version => Assembly.GetExecutingAssembly().GetName().Version;
 
 		public static string Tag => TShock.Utils.ColorTag("InvSee:", Color.Teal);
 
-		public PMain(Main game) : base(game)
+		public PMain(Main game)
+			: base(game)
 		{
-			// A lower order ensures commands are replaced properly
-			Order--;
+			base.Order--;
 		}
 
 		protected override void Dispose(bool disposing)
@@ -44,51 +45,48 @@ namespace InvSee
 			PlayerHooks.PlayerLogout += OnLogout;
 		}
 
-		void OnInitialize(EventArgs e)
+		private void OnInitialize(EventArgs e)
 		{
-			Action<Command> Add = (command) =>
+			Action<Command> action = delegate(Command command)
 			{
-				TShockAPI.Commands.ChatCommands.RemoveAll(c =>
+				TShockAPI.Commands.ChatCommands.RemoveAll(delegate(Command c)
 				{
-					foreach (string s in c.Names)
+					foreach (string name in c.Names)
 					{
-						if (command.Names.Contains(s))
+						if (command.Names.Contains(name))
+						{
 							return true;
+						}
 					}
 					return false;
 				});
 				TShockAPI.Commands.ChatCommands.Add(command);
 			};
-
-			Add(new Command(Permissions.InvSee, Commands.DoInvSee, "invsee")
+			action(new Command(Permissions.InvSee, Commands.DoInvSee, "invsee", "查背包")
 			{
-				HelpDesc = new[]
-				{
-					"Replaces own inventory with target player's inventory.",
-					$"Use '{TShockAPI.Commands.Specifier}invsee' to reset your inventory."
-				}
+				HelpDesc = new string[2] { "用目标玩家的背包替换你自己的背包.", $"输入\"{Commands._cp}查背包\"来恢复你之前的背包." }
 			});
 		}
 
-		void OnLeave(LeaveEventArgs e)
+		private void OnLeave(LeaveEventArgs e)
 		{
-			if (e.Who < 0 || e.Who > Main.maxNetPlayers)
-				return;
-
-			TSPlayer player = TShock.Players[e.Who];
-			if (player != null)
+			if (e.Who >= 0 && e.Who <= Main.maxNetPlayers)
 			{
-				PlayerInfo info = player.GetPlayerInfo();
-				info.Restore(player);
+				TSPlayer tSPlayer = TShock.Players[e.Who];
+				if (tSPlayer != null)
+				{
+					PlayerInfo playerInfo = tSPlayer.GetPlayerInfo();
+					playerInfo.Restore(tSPlayer);
+				}
 			}
 		}
 
-		void OnLogout(PlayerLogoutEventArgs e)
+		private void OnLogout(PlayerLogoutEventArgs e)
 		{
-			if (e.Player == null || !e.Player.Active || !e.Player.RealPlayer)
-				return;
-
-			e.Player.GetPlayerInfo().Restore(e.Player);
+			if (e.Player != null && e.Player.Active && e.Player.RealPlayer)
+			{
+				e.Player.GetPlayerInfo().Restore(e.Player);
+			}
 		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿using TShockAPI;
+using TShockAPI;
 
 namespace InvSee
 {
@@ -9,6 +9,7 @@ namespace InvSee
 		public PlayerData Backup { get; set; }
 
 		public string CopyingUserName { get; set; }
+
 		public int UserID { get; set; }
 
 		public PlayerInfo()
@@ -19,8 +20,9 @@ namespace InvSee
 		public bool Restore(TSPlayer player)
 		{
 			if (Backup == null)
+			{
 				return false;
-
+			}
 			Backup.RestoreCharacter(player);
 			Backup = null;
 			CopyingUserName = "";
