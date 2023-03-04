@@ -26,4 +26,4 @@ jobs:
         with:
           name: Plugin
           path: |
-            ./bin/
+            .bin\x86\Release\
